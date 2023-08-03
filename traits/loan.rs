@@ -42,6 +42,16 @@ impl Loan: ownable {
 
     // This function get the loan info for the caller
     fn get_loan_info(loan_id: AccountId) -> Result<(), LoanError>;
+
+    // This function is for the lender to repay the loan
+
+    #[ink(message)]
+    fn repay(&mut self, loan_id: AccountId, repay_amount: Balance) -> Result<(), LendingError>;
+    
+    // This function lets the lender repay the loan
+    
+    #[ink(message)]
+    fn withdraw_funds(&mut self, loan_id: AccountId, amount: Balamce) -> Result<(), LendingError>;
 }
 
 #[derive(Debug, PartialEq, Eq, scale::Encode, scale::Decode)]
@@ -49,4 +59,6 @@ impl Loan: ownable {
 pub enum LoanError {
     /// This error will be thrown if there is no loan for the loan_id,
     InvalidLoanId,
+    /// This error will be thrown if the lender has not enough funds to repay
+    InsufficientBalanceToRepay,
 }
