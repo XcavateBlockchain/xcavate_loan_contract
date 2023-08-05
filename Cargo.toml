@@ -1,5 +1,5 @@
 [package]
-name = "Xcavate-Lending-Protocol"
+name = "xcavate_lending_protocol"
 version = "0.1.0"
 authors = ["Recrafter"]
 edition = "2021"
