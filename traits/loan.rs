@@ -20,7 +20,7 @@ pub trait Loan {
 
     // This function will delete the loan
     #[ink(message)]
-    fn delete_loan(&mut self);
+    fn delete_loan(&mut self, collection: u16, item: u16);
 
     // This function will update the loan
     #[ink(message)]

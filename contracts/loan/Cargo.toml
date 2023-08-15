@@ -12,7 +12,7 @@ scale-info = { version = "2.6", default-features = false, features = ["derive"],
 
 xcavate_lending_protocol = { path = "../..", default-features = false }
 openbrush = { version = "4.0.0-beta", git = "https://github.com/727-Ventures/openbrush-contracts", default-features = false, features = ["ownable", "access_control"] }
-
+uniques_extension  = { version = "1.0.0", path = "../../uniques_extension", default-features = false  }
 
 
 [dev-dependencies]
@@ -28,7 +28,8 @@ std = [
     "scale/std",
     "scale-info/std",
     "openbrush/std",
-    "xcavate_lending_protocol/std"
+    "xcavate_lending_protocol/std",
+    "uniques_extension/std"
 ]
 ink-as-dependency = []
 e2e-tests = []

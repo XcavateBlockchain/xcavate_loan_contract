@@ -3,6 +3,9 @@
 #[openbrush::contract]
 pub mod loan {
 
+    use uniques_extension::Origin;
+    use uniques_extension::*;
+
     use xcavate_lending_protocol::traits::loan::*;
 
     use openbrush::{
@@ -38,7 +41,14 @@ pub mod loan {
     impl Loan for LoanContract {
 
         #[ink(message)]
-        fn delete_loan(&mut self){
+        fn delete_loan(&mut self, collection: u16, item: u16){
+            let contract = Self::env().account_id();
+            UniquesExtension::burn(
+                Origin::Address,
+                collection,
+                item,
+                Some(contract),
+            );
             <Self as DefaultEnv>::env().terminate_contract(<Self as DefaultEnv>::env().caller());
         }
 
@@ -80,7 +90,8 @@ pub mod loan {
 
         #[ink(message)]
         fn withdraw_funds(&mut self, amount: Balance) -> Result<(), LoanError> {
-            if amount >= <Self as DefaultEnv>::env().balance() {
+
+            if amount >= Self::env().balance() {
                 return Err(LoanError::InsufficientLoanBalance)
             }
             if amount >= self.available_amount {
