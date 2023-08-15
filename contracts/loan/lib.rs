@@ -26,6 +26,7 @@ pub mod loan {
     #[ink(storage)]
     //#[derive(Default, Storage)]
     pub struct LoanContract {
+        lender: AccountId,
         borrower: AccountId,
         collateral_nft: AccountId,
         collateral_price: Balance,
@@ -42,6 +43,10 @@ pub mod loan {
 
         #[ink(message)]
         fn delete_loan(&mut self, collection: u16, item: u16){
+            
+            if self.lender != Self::env().caller() {
+                panic!("No Permission")
+            }
             let contract = Self::env().account_id();
             UniquesExtension::burn(
                 Origin::Address,
@@ -55,6 +60,9 @@ pub mod loan {
         #[ink(message)]
         fn update_loan(&mut self, new_available_amount: Balance, new_timestamp: Timestamp) -> Result<(), LoanError>
         {
+            if self.lender == Self::env().caller() {
+                return Err(LoanError::NoPermission)
+            }
             if self.liquidated == true {
                 return Err(LoanError::AlreadyLiquidated)
             }
@@ -64,16 +72,18 @@ pub mod loan {
         }
 
 
-        #[ink(message)]
+/*         #[ink(message)]
         fn liquidate_loan(&mut self) -> Result<(), LoanError>
         {
-            // Whats happens to the nft?
+            if self.lender == Self::env().caller() {
+                return Err(LoanError::NoPermission)
+            }
             if self.liquidated == true {
                 return Err(LoanError::AlreadyLiquidated)
             }
             self.liquidated = true;
             Ok(())
-        }
+        } */
 
 
         #[ink(message, payable)]
@@ -111,11 +121,13 @@ pub mod loan {
         /// Constructor that initializes loan information for the contract
         #[ink(constructor, payable)]
         pub fn new(borrower: AccountId, collateral_nft: AccountId, collateral_price: Balance, available_amount: Balance, liquidation_price: Balance) -> Self {
+            let lender = <Self as DefaultEnv>::env().caller();
             let timestamp = <Self as DefaultEnv>::env().block_timestamp();
             let liquidated = Default::default();
             let borrowed_amount = 0;
             
             LoanContract {
+                lender,
                 borrower,
                 collateral_nft,
                 collateral_price,
@@ -238,5 +250,6 @@ pub mod loan {
             let repay_result = pay_with_call!(loan.repay(), 0);
             assert_eq!(Err(LoanError::RepayAmountMustBeHigherThanZero), repay_result);
         }
+
     }
 }

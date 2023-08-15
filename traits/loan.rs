@@ -26,9 +26,9 @@ pub trait Loan {
     #[ink(message)]
     fn update_loan(&mut self, new_borrow_amount: Balance, new_timestamp: Timestamp) -> Result<(), LoanError>;
 
-    // This function will liquidate the loan
+/*     // This function will liquidate the loan
     #[ink(message)]
-    fn liquidate_loan(&mut self) -> Result<(), LoanError>;
+    fn liquidate_loan(&mut self) -> Result<(), LoanError>; */
 
     // This function is for the lender to repay the loan
     #[ink(message, payable)]
@@ -56,5 +56,7 @@ pub enum LoanError {
     InsufficientAllowance,
     /// This error will be thrown if the loan got already liquidated
     AlreadyLiquidated,
+
+    NoPermission,
     
 }
