@@ -9,8 +9,44 @@ use openbrush::{
     },
 };
 
+type Id = u128;
+
 #[cfg(feature = "std")]
 use ink::storage::traits::StorageLayout;
+
+#[derive(Debug, Clone, scale::Encode, scale::Decode)]
+#[cfg_attr(feature = "std", derive(StorageLayout, scale_info::TypeInfo))]
+pub struct LoanInfo {
+    pub lender: AccountId,
+    pub borrower: AccountId,
+    pub collection_id: u32,
+    pub item_id: u32,
+    pub collateral_price: Balance,
+    /// amount of token that the lender can borrow from the contract
+    pub available_amount: Balance,
+    /// amount of token that the lender took from the contract
+    pub borrowed_amount: Balance,
+    pub liquidation_price: Balance,
+    pub timestamp: Timestamp,
+    pub liquidated: bool,
+}
+
+impl Default for LoanInfo {
+    fn default() -> Self {
+        Self {
+            lender: [0u8; 32].into(),
+            borrower: [0u8; 32].into(),
+            collection_id: Default::default(),
+            item_id: Default::default(),
+            collateral_price: Balance::default(),
+            available_amount: Balance::default(),
+            borrowed_amount: Balance::default(),
+            liquidation_price: Balance::default(),
+            timestamp: Timestamp::default(),
+            liquidated: false,
+        }
+    }
+}
 
 #[openbrush::wrapper]
 pub type LoanRef = dyn Loan;
@@ -18,13 +54,17 @@ pub type LoanRef = dyn Loan;
 #[openbrush::trait_definition]
 pub trait Loan {
 
+    // This function will create a new loan
+    #[ink(message)]
+    fn create_loan(&mut self, loan_info: LoanInfo) -> Result<(), LoanError>;
+
     // This function will delete the loan
     #[ink(message)]
-    fn delete_loan(&mut self, collection: u16, item: u16);
+    fn delete_loan(&mut self, loan_id: Id);
 
     // This function will update the loan
     #[ink(message)]
-    fn update_loan(&mut self, new_borrow_amount: Balance, new_timestamp: Timestamp) -> Result<(), LoanError>;
+    fn update_loan(&mut self, loan_id: Id, new_borrow_amount: Balance, new_timestamp: Timestamp) -> Result<(), LoanError>;
 
 /*     // This function will liquidate the loan
     #[ink(message)]
@@ -32,11 +72,11 @@ pub trait Loan {
 
     // This function is for the lender to repay the loan
     #[ink(message, payable)]
-    fn repay(&mut self) -> Result<(), LoanError>;
+    fn repay(&mut self, loan_id: Id) -> Result<(), LoanError>;
     
     // This function lets the lender withdraw funds from the loan
     #[ink(message)]
-    fn withdraw_funds(&mut self, amount: Balance) -> Result<(), LoanError>;
+    fn withdraw_funds(&mut self,loan_id: Id, amount: Balance) -> Result<(), LoanError>;
 }
 
 #[derive(Debug, PartialEq, Eq, scale::Encode, scale::Decode)]
@@ -58,5 +98,9 @@ pub enum LoanError {
     AlreadyLiquidated,
 
     NoPermission,
+
+    UnexpectedLoanId,
+
+    LoanIdTaken,
     
 }

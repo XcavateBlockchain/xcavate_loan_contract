@@ -14,11 +14,11 @@ impl UniquesExtension {
 
     pub fn create(
         origin: Origin,
-        collection: u16,
+        collection: u32,
         admin: AccountId,
     ) -> Result<(), UniquesError> {
         ::ink::env::chain_extension::ChainExtensionMethod::build(0x20001)
-            .input::<(Origin, u16, AccountId)>()
+            .input::<(Origin, u32, AccountId)>()
             .output::<Result<(), UniquesError>, true>()
             .handle_error_code::<UniquesError>()
             .call(&(origin, collection, admin))
@@ -26,12 +26,12 @@ impl UniquesExtension {
 
     pub fn transfer(
         origin: Origin,
-        collection: u16,
-        item: u16,
+        collection: u32,
+        item: u32,
         dest: AccountId,
     ) -> Result<(), UniquesError> {
         ::ink::env::chain_extension::ChainExtensionMethod::build(0x20001)
-            .input::<(Origin, u16, u16, AccountId)>()
+            .input::<(Origin, u32, u32, AccountId)>()
             .output::<Result<(), UniquesError>, true>()
             .handle_error_code::<UniquesError>()
             .call(&(origin, collection, item, dest))
@@ -39,12 +39,12 @@ impl UniquesExtension {
 
     pub fn burn(
         origin: Origin,
-        collection: u16,
-        item: u16,
+        collection: u32,
+        item: u32,
         check_owner: Option<AccountId>,
     ) -> Result<(), UniquesError> {
         ::ink::env::chain_extension::ChainExtensionMethod::build(0x20001)
-            .input::<(Origin, u16, u16, Option<AccountId>)>()
+            .input::<(Origin, u32, u32, Option<AccountId>)>()
             .output::<Result<(), UniquesError>, true>()
             .handle_error_code::<UniquesError>()
             .call(&(origin, collection, item, check_owner))

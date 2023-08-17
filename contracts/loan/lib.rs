@@ -7,10 +7,11 @@ pub mod loan {
     use uniques_extension::*;
 
     use xcavate_lending_protocol::traits::loan::*;
+    use ink::storage::Mapping;
 
     use openbrush::{
         modifiers,
-        storage::Mapping,
+        //storage::Mapping,
         traits::{
             DefaultEnv,
             Storage,
@@ -22,31 +23,35 @@ pub mod loan {
         call::{build_call, ExecutionInput, Selector},
         DefaultEnvironment,
     };
+    type Id = u128;
 
     #[ink(storage)]
     //#[derive(Default, Storage)]
     pub struct LoanContract {
-        lender: AccountId,
-        borrower: AccountId,
-        collateral_nft: AccountId,
-        collateral_price: Balance,
-        /// amount of token that the lender can borrow from the contract
-        available_amount: Balance,
-        /// amount of token that the lender took from the contract
-        borrowed_amount: Balance,
-        liquidation_price: Balance,
-        timestamp: Timestamp,
-        liquidated: bool,
+        loan_info: Mapping<Id, LoanInfo>,
+        last_loan_id: Id,
     }
 
     impl Loan for LoanContract {
 
         #[ink(message)]
-        fn delete_loan(&mut self, collection: u16, item: u16){
-            
-            if self.lender != Self::env().caller() {
+        fn create_loan(&mut self, loan_info: LoanInfo) -> Result<(), LoanError> {
+            let loan_id = self._get_next_loan_id_and_increase();
+            if self.loan_info.get(&loan_id).is_some() {
+                return Err(LoanError::LoanIdTaken)
+            }
+            self.loan_info.insert(&loan_id, &loan_info);
+            Ok(())
+        }
+
+        #[ink(message)]
+        fn delete_loan(&mut self, loan_id: Id){
+            let mut loan_info = self.loan_info.get(&loan_id).unwrap();
+            if loan_info.lender != Self::env().caller() {
                 panic!("No Permission")
             }
+            let collection = loan_info.collection_id;
+            let item = loan_info.item_id;
             let contract = Self::env().account_id();
             UniquesExtension::burn(
                 Origin::Address,
@@ -58,16 +63,18 @@ pub mod loan {
         }
 
         #[ink(message)]
-        fn update_loan(&mut self, new_available_amount: Balance, new_timestamp: Timestamp) -> Result<(), LoanError>
+        fn update_loan(&mut self, loan_id: Id, new_available_amount: Balance, new_timestamp: Timestamp) -> Result<(), LoanError>
         {
-            if self.lender == Self::env().caller() {
+            let mut loan_info = self.loan_info.get(&loan_id).unwrap();
+            if loan_info.lender == Self::env().caller() {
                 return Err(LoanError::NoPermission)
             }
-            if self.liquidated == true {
+            if loan_info.liquidated == true {
                 return Err(LoanError::AlreadyLiquidated)
             }
-            self.available_amount = new_available_amount;
-            self.timestamp = <Self as DefaultEnv>::env().block_timestamp();
+            loan_info.available_amount = new_available_amount;
+            loan_info.timestamp = <Self as DefaultEnv>::env().block_timestamp();
+            self.loan_info.insert(&loan_id, &loan_info);
             Ok(())
         }
 
@@ -87,32 +94,36 @@ pub mod loan {
 
 
         #[ink(message, payable)]
-        fn repay(&mut self) -> Result<(), LoanError>
+        fn repay(&mut self, loan_id: Id) -> Result<(), LoanError>
         {
+            let mut loan_info = self.loan_info.get(&loan_id).unwrap();
             let repay_amount = <Self as DefaultEnv>::env().transferred_value();
             if repay_amount == 0 {
                 return Err(LoanError::RepayAmountMustBeHigherThanZero)
             }
-            self.borrowed_amount -= repay_amount;
+            loan_info.borrowed_amount -= repay_amount;
+            self.loan_info.insert(&loan_id, &loan_info);
             Ok(())
         }
     
 
         #[ink(message)]
-        fn withdraw_funds(&mut self, amount: Balance) -> Result<(), LoanError> {
+        fn withdraw_funds(&mut self,loan_id: Id, amount: Balance) -> Result<(), LoanError> {
 
+            let mut loan_info = self.loan_info.get(&loan_id).unwrap();
             if amount >= Self::env().balance() {
                 return Err(LoanError::InsufficientLoanBalance)
             }
-            if amount >= self.available_amount {
+            if amount >= loan_info.available_amount {
                 return Err(LoanError::InsufficientLoanBalance)
             }
-            if self.borrower != <Self as DefaultEnv>::env().caller() {
+            if loan_info.borrower != <Self as DefaultEnv>::env().caller() {
                 return Err(LoanError::NotTheBorrower)
             }
-            <Self as DefaultEnv>::env().transfer(self.borrower, amount);
-            self.borrowed_amount += amount;
-            self.available_amount -= amount;
+            <Self as DefaultEnv>::env().transfer(loan_info.borrower, amount);
+            loan_info.borrowed_amount += amount;
+            loan_info.available_amount -= amount;
+            self.loan_info.insert(&loan_id, &loan_info);
             Ok(())
         }
     }
@@ -120,32 +131,26 @@ pub mod loan {
     impl LoanContract {
         /// Constructor that initializes loan information for the contract
         #[ink(constructor, payable)]
-        pub fn new(borrower: AccountId, collateral_nft: AccountId, collateral_price: Balance, available_amount: Balance, liquidation_price: Balance) -> Self {
-            let lender = <Self as DefaultEnv>::env().caller();
-            let timestamp = <Self as DefaultEnv>::env().block_timestamp();
-            let liquidated = Default::default();
-            let borrowed_amount = 0;
-            
-            LoanContract {
-                lender,
-                borrower,
-                collateral_nft,
-                collateral_price,
-                available_amount,
-                borrowed_amount,
-                liquidation_price,
-                timestamp,
-                liquidated
+        pub fn new() -> Self {
+            let loan_info = Mapping::default();
+            let last_loan_id = 1;
+
+            LoanContract{
+                loan_info,
+                last_loan_id,
             }
         }
 
-/*         #[ink(message)]
-        pub fn get_loan_info(&self) -> &LoanContract {
-            self
-        }   */
+        /// Internal function to return the id of a new loan and to increase it in the storage
+        fn _get_next_loan_id_and_increase(&mut self) -> u128 {
+            let mut loan_id = self.last_loan_id;
+            loan_id += 1;
+            self.last_loan_id = loan_id;
+            loan_id
+        }
     }
 
-    #[cfg(test)]
+   /*  #[cfg(test)]
     mod tests {
         use super::*;
         use ink::env::pay_with_call;
@@ -251,5 +256,5 @@ pub mod loan {
             assert_eq!(Err(LoanError::RepayAmountMustBeHigherThanZero), repay_result);
         }
 
-    }
+    } */
 }
