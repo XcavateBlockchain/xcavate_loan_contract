@@ -57,11 +57,7 @@ pub trait Loan {
 
     // This function will update the loan
     #[ink(message)]
-    fn update_loan(&mut self, loan_id: Id, new_borrow_amount: Balance, new_timestamp: Timestamp) -> Result<(), LoanError>;
-
-/*     // This function will liquidate the loan
-    #[ink(message)]
-    fn liquidate_loan(&mut self) -> Result<(), LoanError>; */
+    fn update_loan(&mut self, loan_id: Id, new_borrow_amount: Balance) -> Result<(), LoanError>;
 
     // This function is for the lender to repay the loan
     #[ink(message, payable)]
@@ -102,5 +98,7 @@ pub enum LoanError {
     OngoingLoan,
 
     NonExistingLoanId,
+
+    NotEnoughFundsProvided,
     
 }
