@@ -1,11 +1,8 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
-use ink::prelude::vec::Vec;
-
 use ink::env::{DefaultEnvironment, Environment};
 use scale::{Decode, Encode};
 
-type Balance = <DefaultEnvironment as Environment>::Balance;
 type AccountId = <DefaultEnvironment as Environment>::AccountId;
 
 pub struct UniquesExtension;

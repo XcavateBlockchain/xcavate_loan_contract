@@ -10,19 +10,12 @@ pub mod loan {
     use ink::storage::Mapping;
 
     use openbrush::{
-        modifiers,
         //storage::Mapping,
         traits::{
             DefaultEnv,
-            Storage,
-            String
         },
     };
 
-    use ink::env::{
-        call::{build_call, ExecutionInput, Selector},
-        DefaultEnvironment,
-    };
     type Id = u128;
 
     #[ink(storage)]
@@ -35,7 +28,22 @@ pub mod loan {
     impl Loan for LoanContract {
 
         #[ink(message)]
-        fn create_loan(&mut self, loan_info: LoanInfo) -> Result<(), LoanError> {
+        fn create_loan(&mut self, borrower: AccountId, collection_id: u32, item_id: u32, collateral_price: Balance, available_amount: Balance) -> Result<(), LoanError> {
+
+            let lender = <Self as DefaultEnv>::env().caller();
+            let timestamp = <Self as DefaultEnv>::env().block_timestamp();
+            let borrowed_amount = 0;
+            let loan_info = LoanInfo {
+                lender,
+                borrower, 
+                collection_id, 
+                item_id, 
+                collateral_price,
+                available_amount, 
+                borrowed_amount,
+                timestamp,
+            };
+
             let loan_id = self._get_next_loan_id_and_increase();
             if self.loan_info.get(&loan_id).is_some() {
                 return Err(LoanError::LoanIdTaken)
@@ -45,12 +53,15 @@ pub mod loan {
         }
 
         #[ink(message)]
-        fn delete_loan(&mut self, loan_id: Id){
-            let mut loan_info = self.loan_info.get(&loan_id).unwrap();
+        fn delete_loan(&mut self, loan_id: Id) -> Result<(), LoanError> {
+            let loan_info = self.loan_info.get(&loan_id).unwrap();
             if loan_info.lender != Self::env().caller() {
-                panic!("No Permission")
+                return Err(LoanError::NoPermission)
             }
-            let collection = loan_info.collection_id;
+            if loan_info.borrowed_amount == 0 {
+                return Err(LoanError::OngoingLoan)
+            }
+            let collection = loan_info.collection_id;       
             let item = loan_info.item_id;
             let contract = Self::env().account_id();
             UniquesExtension::burn(
@@ -59,7 +70,8 @@ pub mod loan {
                 item,
                 Some(contract),
             );
-            <Self as DefaultEnv>::env().terminate_contract(<Self as DefaultEnv>::env().caller());
+            self.loan_info.remove(&loan_id);
+            Ok(())
         }
 
         #[ink(message)]
@@ -68,9 +80,6 @@ pub mod loan {
             let mut loan_info = self.loan_info.get(&loan_id).unwrap();
             if loan_info.lender == Self::env().caller() {
                 return Err(LoanError::NoPermission)
-            }
-            if loan_info.liquidated == true {
-                return Err(LoanError::AlreadyLiquidated)
             }
             loan_info.available_amount = new_available_amount;
             loan_info.timestamp = <Self as DefaultEnv>::env().block_timestamp();
@@ -110,7 +119,11 @@ pub mod loan {
         #[ink(message)]
         fn withdraw_funds(&mut self,loan_id: Id, amount: Balance) -> Result<(), LoanError> {
 
-            let mut loan_info = self.loan_info.get(&loan_id).unwrap();
+            let loan_info_option = self.loan_info.get(&loan_id);
+            if loan_info_option.is_none() {
+                return Err(LoanError::NonExistingLoanId)
+            }
+            let mut loan_info = loan_info_option.unwrap();
             if amount >= Self::env().balance() {
                 return Err(LoanError::InsufficientLoanBalance)
             }
@@ -126,6 +139,14 @@ pub mod loan {
             self.loan_info.insert(&loan_id, &loan_info);
             Ok(())
         }
+
+        #[ink(message)]
+        fn get_loan_info(&self, loan_id: Id) -> LoanInfo{
+            let mut loan_info = self.loan_info.get(&loan_id).unwrap_or_else(|| {
+                panic!("loan_id doesn't exist");
+            });
+            loan_info
+        }
     }
 
     impl LoanContract {
@@ -133,7 +154,7 @@ pub mod loan {
         #[ink(constructor, payable)]
         pub fn new() -> Self {
             let loan_info = Mapping::default();
-            let last_loan_id = 1;
+            let last_loan_id = 0;
 
             LoanContract{
                 loan_info,
@@ -150,18 +171,20 @@ pub mod loan {
         }
     }
 
-   /*  #[cfg(test)]
+
+    #[cfg(test)]
     mod tests {
         use super::*;
         use ink::env::pay_with_call;
         use ink::env::test::*;
 
-        fn create_contract(borrower: AccountId, collateral_nft: AccountId, collateral_price: Balance, available_amount: Balance, liquidation_price: Balance) -> LoanContract{
+        fn create_contract() -> LoanContract{
             let accounts = default_accounts();
             set_sender(accounts.alice);
             set_balance(contract_id(), 1000);
-            LoanContract::new(borrower, collateral_nft, collateral_price, available_amount,liquidation_price)
+            LoanContract::new()
         }
+
         fn contract_id() -> AccountId {
             ink::env::test::callee::<ink::env::DefaultEnvironment>()
         }
@@ -179,33 +202,72 @@ pub mod loan {
         }
 
         #[ink::test]
+        fn create_loan_works() {
+            let accounts = default_accounts();
+            let mut loan = create_contract();
+            let result = loan.create_loan(accounts.bob, 0, 0, 2000, 1000);
+            assert_eq!(result, Ok(()));
+        }
+
+        #[ink::test]
+        fn increase_loan_id_works() {
+            let accounts = default_accounts();
+            let mut loan = create_contract();
+            let result = loan.create_loan(accounts.bob, 0, 0, 2000, 1000);
+            assert_eq!(result, Ok(()));
+            loan.get_loan_info(1);
+            let result = loan.create_loan(accounts.bob, 0, 0, 1000, 500);
+            assert_eq!(result, Ok(()));
+            loan.get_loan_info(2);
+        }
+
+        #[ink::test]
         fn withdraw_works() {
             let accounts = default_accounts();
-            let mut loan = create_contract(accounts.bob, [0x09; 32].into(), 2000, 1000, 1500);
+            let mut loan = create_contract();
+            let result = loan.create_loan(accounts.bob, 0, 0, 2000, 1000);
+            assert_eq!(result, Ok(()));
             let contract_balance_before = ink::env::balance::<ink::env::DefaultEnvironment>();
             let bob_balance_before = get_account_balance::<ink::env::DefaultEnvironment>(accounts.bob);
             assert_eq!(Ok(1000), bob_balance_before);
             assert_eq!(1000, contract_balance_before);
             set_sender(accounts.bob);
-            let result = loan.withdraw_funds(500);
+            let result = loan.withdraw_funds(1, 500);
             assert_eq!(Ok(()), result);
             let contract_balance_after = ink::env::balance::<ink::env::DefaultEnvironment>();
             let bob_balance_after = get_account_balance::<ink::env::DefaultEnvironment>(accounts.bob);
             assert_eq!(Ok(1500), bob_balance_after);
             assert_eq!(500, contract_balance_after);
-            assert_eq!(500, loan.borrowed_amount);
-            assert_eq!(500, loan.available_amount);
+            let loan_info = loan.get_loan_info(1);
+            assert_eq!(500, loan_info.borrowed_amount);
+            assert_eq!(500, loan_info.available_amount);
+        }
+
+        #[ink::test]
+        fn withdraw_fails_non_existing_loanid() {
+            let accounts = default_accounts();
+            let mut loan = create_contract();
+            let result = loan.create_loan(accounts.bob, 0, 0, 2000, 1000);
+            assert_eq!(result, Ok(()));
+            let contract_balance_before = ink::env::balance::<ink::env::DefaultEnvironment>();
+            let bob_balance_before = get_account_balance::<ink::env::DefaultEnvironment>(accounts.bob);
+            assert_eq!(Ok(1000), bob_balance_before);
+            assert_eq!(1000, contract_balance_before);
+            set_sender(accounts.bob);
+            let result = loan.withdraw_funds(3, 500);
+            assert_eq!(Err(LoanError::NonExistingLoanId), result);
         }
 
         #[ink::test]
         fn withdraw_fails_if_someone_but_the_borrower_calls() {
             let accounts = default_accounts();
-            let mut loan = create_contract(accounts.bob, [0x09; 32].into(), 2000, 1000, 1500);
-            set_sender(accounts.alice);
-            let result = loan.withdraw_funds(500);
+            let mut loan = create_contract();
+            let result = loan.create_loan(accounts.alice, 0, 0, 2000, 1000);
+            set_sender(accounts.bob);
+            let result = loan.withdraw_funds(1,500);
             assert_eq!(Err(LoanError::NotTheBorrower), result);
             set_sender(accounts.charlie);
-            let result = loan.withdraw_funds(500);
+            let result = loan.withdraw_funds(1,500);
             assert_eq!(Err(LoanError::NotTheBorrower), result);
             let contract_balance_after = ink::env::balance::<ink::env::DefaultEnvironment>();
             assert_eq!(1000, contract_balance_after);
@@ -214,47 +276,50 @@ pub mod loan {
         #[ink::test]
         fn withdraw_fails_insufficient_funds() {
             let accounts = default_accounts();
-            let mut loan = create_contract(accounts.bob, [0x09; 32].into(), 2000, 1000, 1500);
+            let mut loan = create_contract();
+            let result = loan.create_loan(accounts.alice, 0, 0, 2000, 1000);
             set_sender(accounts.bob);
-            let result = loan.withdraw_funds(1500);
+            let result = loan.withdraw_funds(1, 1500);
             assert_eq!(Err(LoanError::InsufficientLoanBalance), result);
         }
 
         #[ink::test]
         fn repay_works() {
             let accounts = default_accounts();
-            let mut loan = create_contract(accounts.bob, [0x09; 32].into(), 2000, 1000, 1500);
+            let mut loan = create_contract();
+            let result = loan.create_loan(accounts.bob, 0, 0, 2000, 1000);
             let contract_balance_before = ink::env::balance::<ink::env::DefaultEnvironment>();
             let bob_balance_before = get_account_balance::<ink::env::DefaultEnvironment>(accounts.bob);
             assert_eq!(Ok(1000), bob_balance_before);
             assert_eq!(1000, contract_balance_before);
             set_sender(accounts.bob);
-            let result = loan.withdraw_funds(500);
+            let result = loan.withdraw_funds(1, 500);
             assert_eq!(Ok(()), result);
-            let repay_result = pay_with_call!(loan.repay(), 250);
+            let repay_result = pay_with_call!(loan.repay(1), 250);
             assert_eq!(Ok(()), repay_result);
             let contract_balance_after = ink::env::balance::<ink::env::DefaultEnvironment>();
             let bob_balance_after = get_account_balance::<ink::env::DefaultEnvironment>(accounts.bob);
             assert_eq!(Ok(1250), bob_balance_after);
             assert_eq!(750, contract_balance_after);
-            assert_eq!(250, loan.borrowed_amount);
-            assert_eq!(500, loan.available_amount);
+            let loan_info = loan.get_loan_info(1);
+            assert_eq!(250, loan_info.borrowed_amount);
+            assert_eq!(500, loan_info.available_amount);
         }
 
         #[ink::test]
         fn repay_fails_if_amount_is_zero() {
             let accounts = default_accounts();
-            let mut loan = create_contract(accounts.bob, [0x09; 32].into(), 2000, 1000, 1500);
+            let mut loan = create_contract();
+            let result = loan.create_loan(accounts.bob, 0, 0, 2000, 1000);
             let contract_balance_before = ink::env::balance::<ink::env::DefaultEnvironment>();
             let bob_balance_before = get_account_balance::<ink::env::DefaultEnvironment>(accounts.bob);
             assert_eq!(Ok(1000), bob_balance_before);
             assert_eq!(1000, contract_balance_before);
             set_sender(accounts.bob);
-            let result = loan.withdraw_funds(500);
+            let result = loan.withdraw_funds(1, 500);
             assert_eq!(Ok(()), result);
-            let repay_result = pay_with_call!(loan.repay(), 0);
+            let repay_result = pay_with_call!(loan.repay(1), 0);
             assert_eq!(Err(LoanError::RepayAmountMustBeHigherThanZero), repay_result);
         }
-
-    } */
+    }
 }

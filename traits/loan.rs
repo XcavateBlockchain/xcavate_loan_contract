@@ -1,7 +1,4 @@
 use openbrush::{
-    contracts::traits::{
-        ownable::*,
-    },
     traits::{
         AccountId,
         Balance,
@@ -26,9 +23,7 @@ pub struct LoanInfo {
     pub available_amount: Balance,
     /// amount of token that the lender took from the contract
     pub borrowed_amount: Balance,
-    pub liquidation_price: Balance,
     pub timestamp: Timestamp,
-    pub liquidated: bool,
 }
 
 impl Default for LoanInfo {
@@ -41,9 +36,7 @@ impl Default for LoanInfo {
             collateral_price: Balance::default(),
             available_amount: Balance::default(),
             borrowed_amount: Balance::default(),
-            liquidation_price: Balance::default(),
             timestamp: Timestamp::default(),
-            liquidated: false,
         }
     }
 }
@@ -56,11 +49,11 @@ pub trait Loan {
 
     // This function will create a new loan
     #[ink(message)]
-    fn create_loan(&mut self, loan_info: LoanInfo) -> Result<(), LoanError>;
+    fn create_loan(&mut self, borrower: AccountId, collection_id: u32, item_id: u32, collateral_price: Balance, available_amount: Balance) -> Result<(), LoanError>;
 
     // This function will delete the loan
     #[ink(message)]
-    fn delete_loan(&mut self, loan_id: Id);
+    fn delete_loan(&mut self, loan_id: Id) -> Result<(), LoanError>;
 
     // This function will update the loan
     #[ink(message)]
@@ -77,6 +70,9 @@ pub trait Loan {
     // This function lets the lender withdraw funds from the loan
     #[ink(message)]
     fn withdraw_funds(&mut self,loan_id: Id, amount: Balance) -> Result<(), LoanError>;
+
+    #[ink(message)]
+    fn get_loan_info(&self, loan_id: Id) -> LoanInfo;
 }
 
 #[derive(Debug, PartialEq, Eq, scale::Encode, scale::Decode)]
@@ -102,5 +98,9 @@ pub enum LoanError {
     UnexpectedLoanId,
 
     LoanIdTaken,
+
+    OngoingLoan,
+
+    NonExistingLoanId,
     
 }
