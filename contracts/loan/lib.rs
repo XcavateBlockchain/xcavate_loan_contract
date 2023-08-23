@@ -5,28 +5,12 @@ use sp_runtime::MultiAddress;
 
 #[derive(scale::Encode)]
 enum RuntimeCall {
-    /// This index can be found by investigating runtime configuration. You can check the
-    /// pallet order inside `construct_runtime!` block and read the position of your
-    /// pallet (0-based).
-    ///
-    ///
-    /// [See here for more.](https://substrate.stackexchange.com/questions/778/how-to-get-pallet-index-u8-of-a-pallet-in-runtime)
     #[codec(index = 10)]
     Uniques(UniquesCall),
 }
 
 #[derive(scale::Encode)]
 enum UniquesCall {
-    /// This index can be found by investigating the pallet dispatchable API. In your
-    /// pallet code, look for `#[pallet::call]` section and check
-    /// `#[pallet::call_index(x)]` attribute of the call. If these attributes are
-    /// missing, use source-code order (0-based).
-    #[codec(index = 0)]
-    Create {
-        collection: u32,
-        admin: MultiAddress<AccountId, ()>,
-    },
-
     #[codec(index = 4)]
     Burn {
         collection: u32,
@@ -48,26 +32,20 @@ pub mod loan {
     use xcavate_lending_protocol::traits::loan::*;
     use ink::storage::Mapping;
 
- 
-
     use openbrush::{
-        //storage::Mapping,
         traits::{
             DefaultEnv,
         },
     };
 
-
-
-
     type Id = u128;
-
-    
 
     #[ink(storage)]
     //#[derive(Default, Storage)]
     pub struct LoanContract {
+        //
         loan_info: Mapping<Id, LoanInfo>,
+        //Identifier for the loan
         last_loan_id: Id,
     }
 
@@ -99,12 +77,7 @@ pub mod loan {
                 return Err(LoanError::LoanIdTaken)
             }
             self.loan_info.insert(&loan_id, &loan_info);
-            Self::env()
-                .call_runtime(&RuntimeCall::Uniques(UniquesCall::Create {
-                    collection: collection_id,
-                    admin: lender.into(),                   
-                }))
-                .map_err(Into::into)
+            Ok(())
         }
 
         #[ink(message)]
@@ -129,7 +102,7 @@ pub mod loan {
                 .map_err(Into::into)
         }
 
-        #[ink(message)]
+        #[ink(message, payable)]
         fn update_loan(&mut self, loan_id: Id, additional_available_amount: Balance) -> Result<(), LoanError>
         {
             let mut loan_info = self.loan_info.get(&loan_id).unwrap();
@@ -147,15 +120,17 @@ pub mod loan {
 
 
         #[ink(message, payable)]
-        fn repay(&mut self, loan_id: Id) -> Result<(), LoanError>
+        fn repay(&mut self, loan_id: Id, repay_amount: Balance) -> Result<(), LoanError>
         {
             let mut loan_info = self.loan_info.get(&loan_id).unwrap();
-            let repay_amount = <Self as DefaultEnv>::env().transferred_value();
             if repay_amount == 0 {
                 return Err(LoanError::RepayAmountMustBeHigherThanZero)
             }
+            if repay_amount > Self::env().transferred_value() {
+                return Err(LoanError::NotEnoughFundsProvided)
+            } 
             loan_info.borrowed_amount -= repay_amount;
-            self.loan_info.insert(&loan_id, &loan_info);
+            self.loan_info.insert(&loan_id, &loan_info); 
             Ok(())
         }
     
@@ -186,7 +161,7 @@ pub mod loan {
 
         #[ink(message)]
         fn get_loan_info(&self, loan_id: Id) -> LoanInfo{
-            let mut loan_info = self.loan_info.get(&loan_id).unwrap_or_else(|| {
+            let loan_info = self.loan_info.get(&loan_id).unwrap_or_else(|| {
                 panic!("loan_id doesn't exist");
             });
             loan_info
@@ -314,7 +289,7 @@ pub mod loan {
         fn withdraw_fails_if_someone_but_the_borrower_calls() {
             let accounts = default_accounts();
             let mut loan = create_contract();
-            let result = pay_with_call!(loan.create_loan(accounts.alice, 0, 0, 2000, 1000), 1000);
+            pay_with_call!(loan.create_loan(accounts.alice, 0, 0, 2000, 1000), 1000);
             set_sender(accounts.bob);
             let result = loan.withdraw_funds(1,500);
             assert_eq!(Err(LoanError::NotTheBorrower), result);
@@ -329,7 +304,7 @@ pub mod loan {
         fn withdraw_fails_insufficient_funds() {
             let accounts = default_accounts();
             let mut loan = create_contract();
-            let result = pay_with_call!(loan.create_loan(accounts.alice, 0, 0, 2000, 1000), 1000);
+            pay_with_call!(loan.create_loan(accounts.alice, 0, 0, 2000, 1000), 1000);
             set_sender(accounts.bob);
             let result = loan.withdraw_funds(1, 1500);
             assert_eq!(Err(LoanError::InsufficientLoanBalance), result);
@@ -339,7 +314,7 @@ pub mod loan {
         fn repay_works() {
             let accounts = default_accounts();
             let mut loan = create_contract();
-            let result = pay_with_call!(loan.create_loan(accounts.bob, 0, 0, 2000, 1000), 1000);
+            pay_with_call!(loan.create_loan(accounts.bob, 0, 0, 2000, 1000), 1000);
             let contract_balance_before = ink::env::balance::<ink::env::DefaultEnvironment>();
             let bob_balance_before = get_account_balance::<ink::env::DefaultEnvironment>(accounts.bob);
             assert_eq!(Ok(1000), bob_balance_before);
@@ -347,7 +322,7 @@ pub mod loan {
             set_sender(accounts.bob);
             let result = loan.withdraw_funds(1, 500);
             assert_eq!(Ok(()), result);
-            let repay_result = pay_with_call!(loan.repay(1), 250);
+            let repay_result = pay_with_call!(loan.repay(1, 250), 250);
             assert_eq!(Ok(()), repay_result);
             let contract_balance_after = ink::env::balance::<ink::env::DefaultEnvironment>();
             let bob_balance_after = get_account_balance::<ink::env::DefaultEnvironment>(accounts.bob);
@@ -370,17 +345,24 @@ pub mod loan {
             set_sender(accounts.bob);
             let result = loan.withdraw_funds(1, 500);
             assert_eq!(Ok(()), result);
-            let repay_result = pay_with_call!(loan.repay(1), 0);
+            let repay_result = pay_with_call!(loan.repay(1, 0), 0);
             assert_eq!(Err(LoanError::RepayAmountMustBeHigherThanZero), repay_result);
         }
 
         #[ink::test]
-        fn burn_works() {
+        fn repay_fails_not_enough_funds_provided() {
             let accounts = default_accounts();
             let mut loan = create_contract();
             let result = pay_with_call!(loan.create_loan(accounts.bob, 0, 0, 2000, 1000), 1000);
-            let result = loan.delete_loan(1);
+            let contract_balance_before = ink::env::balance::<ink::env::DefaultEnvironment>();
+            let bob_balance_before = get_account_balance::<ink::env::DefaultEnvironment>(accounts.bob);
+            assert_eq!(Ok(1000), bob_balance_before);
+            assert_eq!(2000, contract_balance_before);
+            set_sender(accounts.bob);
+            let result = loan.withdraw_funds(1, 500);
             assert_eq!(Ok(()), result);
+            let repay_result = pay_with_call!(loan.repay(1, 500), 400);
+            assert_eq!(Err(LoanError::NotEnoughFundsProvided), repay_result);
         }
     }
 }
