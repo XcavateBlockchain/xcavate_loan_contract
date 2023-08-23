@@ -48,7 +48,7 @@ pub type LoanRef = dyn Loan;
 pub trait Loan {
 
     // This function will create a new loan
-    #[ink(message)]
+    #[ink(message, payable)]
     fn create_loan(&mut self, borrower: AccountId, collection_id: u32, item_id: u32, collateral_price: Balance, available_amount: Balance) -> Result<(), LoanError>;
 
     // This function will delete the loan
@@ -100,5 +100,18 @@ pub enum LoanError {
     NonExistingLoanId,
 
     NotEnoughFundsProvided,
+
+    CallRuntimeFailed,
     
 }
+
+impl From<EnvError> for LoanError {
+    fn from(e: EnvError) -> Self {
+        match e {
+            EnvError::CallRuntimeFailed => LoanError::CallRuntimeFailed,
+            _ => panic!("Unexpected error from `pallet-contracts`."),
+        }
+    }
+}
+
+use ink::env::Error as EnvError;

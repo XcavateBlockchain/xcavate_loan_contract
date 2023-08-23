@@ -1,13 +1,54 @@
 #![cfg_attr(not(feature = "std"), no_std, no_main)]
 
+use ink::primitives::AccountId;
+use sp_runtime::MultiAddress;
+
+#[derive(scale::Encode)]
+enum RuntimeCall {
+    /// This index can be found by investigating runtime configuration. You can check the
+    /// pallet order inside `construct_runtime!` block and read the position of your
+    /// pallet (0-based).
+    ///
+    ///
+    /// [See here for more.](https://substrate.stackexchange.com/questions/778/how-to-get-pallet-index-u8-of-a-pallet-in-runtime)
+    #[codec(index = 10)]
+    Uniques(UniquesCall),
+}
+
+#[derive(scale::Encode)]
+enum UniquesCall {
+    /// This index can be found by investigating the pallet dispatchable API. In your
+    /// pallet code, look for `#[pallet::call]` section and check
+    /// `#[pallet::call_index(x)]` attribute of the call. If these attributes are
+    /// missing, use source-code order (0-based).
+    #[codec(index = 0)]
+    Create {
+        collection: u32,
+        admin: MultiAddress<AccountId, ()>,
+    },
+
+    #[codec(index = 4)]
+    Burn {
+        collection: u32,
+        item: u32,
+        admin: Option<MultiAddress<AccountId, ()>>,
+    },
+}
+
+
 #[openbrush::contract]
 pub mod loan {
 
-    use uniques_extension::Origin;
-    use uniques_extension::*;
+
+    use crate::{
+        UniquesCall,
+        RuntimeCall,
+    };
 
     use xcavate_lending_protocol::traits::loan::*;
     use ink::storage::Mapping;
+
+ 
 
     use openbrush::{
         //storage::Mapping,
@@ -16,7 +57,12 @@ pub mod loan {
         },
     };
 
+
+
+
     type Id = u128;
+
+    
 
     #[ink(storage)]
     //#[derive(Default, Storage)]
@@ -25,9 +71,10 @@ pub mod loan {
         last_loan_id: Id,
     }
 
-    impl Loan for LoanContract {
+    
 
-        #[ink(message)]
+    impl Loan for LoanContract {
+        #[ink(message, payable)]
         fn create_loan(&mut self, borrower: AccountId, collection_id: u32, item_id: u32, collateral_price: Balance, available_amount: Balance) -> Result<(), LoanError> {
 
             if available_amount > Self::env().transferred_value() {
@@ -52,7 +99,12 @@ pub mod loan {
                 return Err(LoanError::LoanIdTaken)
             }
             self.loan_info.insert(&loan_id, &loan_info);
-            Ok(())
+            Self::env()
+                .call_runtime(&RuntimeCall::Uniques(UniquesCall::Create {
+                    collection: collection_id,
+                    admin: lender.into(),                   
+                }))
+                .map_err(Into::into)
         }
 
         #[ink(message)]
@@ -61,20 +113,20 @@ pub mod loan {
             if loan_info.lender != Self::env().caller() {
                 return Err(LoanError::NoPermission)
             }
-            if loan_info.borrowed_amount == 0 {
+            if loan_info.borrowed_amount != 0 {
                 return Err(LoanError::OngoingLoan)
             }
             let collection = loan_info.collection_id;       
             let item = loan_info.item_id;
             let contract = Self::env().account_id();
-            UniquesExtension::burn(
-                Origin::Address,
-                collection,
-                item,
-                Some(contract),
-            );
             self.loan_info.remove(&loan_id);
-            Ok(())
+            Self::env()
+                .call_runtime(&RuntimeCall::Uniques(UniquesCall::Burn {
+                    collection,
+                    item,
+                    admin: Some(contract.into()),
+                }))
+                .map_err(Into::into)
         }
 
         #[ink(message)]
@@ -320,6 +372,15 @@ pub mod loan {
             assert_eq!(Ok(()), result);
             let repay_result = pay_with_call!(loan.repay(1), 0);
             assert_eq!(Err(LoanError::RepayAmountMustBeHigherThanZero), repay_result);
+        }
+
+        #[ink::test]
+        fn burn_works() {
+            let accounts = default_accounts();
+            let mut loan = create_contract();
+            let result = pay_with_call!(loan.create_loan(accounts.bob, 0, 0, 2000, 1000), 1000);
+            let result = loan.delete_loan(1);
+            assert_eq!(Ok(()), result);
         }
     }
 }
