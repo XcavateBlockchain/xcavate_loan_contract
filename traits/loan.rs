@@ -6,7 +6,7 @@ use openbrush::{
     },
 };
 
-type Id = u128;
+type Id = u32;
 
 #[cfg(feature = "std")]
 use ink::storage::traits::StorageLayout;

@@ -5,17 +5,15 @@ use sp_runtime::MultiAddress;
 
 #[derive(scale::Encode)]
 enum RuntimeCall {
-    #[codec(index = 10)]
-    Uniques(UniquesCall),
+    #[codec(index = 8)]
+    CommunityLoanPool(CommunityLoanPoolCall),
 }
 
 #[derive(scale::Encode)]
-enum UniquesCall {
-    #[codec(index = 4)]
-    Burn {
-        collection: u32,
-        item: u32,
-        admin: Option<MultiAddress<AccountId, ()>>,
+enum CommunityLoanPoolCall {
+    #[codec(index = 3)]
+    DeleteLoan {
+        loan_id: u32,
     },
 }
 
@@ -25,7 +23,7 @@ pub mod loan {
 
 
     use crate::{
-        UniquesCall,
+        CommunityLoanPoolCall,
         RuntimeCall,
     };
 
@@ -38,15 +36,17 @@ pub mod loan {
         },
     };
 
-    type Id = u128;
+    type Id = u32;
 
     #[ink(storage)]
     //#[derive(Default, Storage)]
     pub struct LoanContract {
-        //
+        //Mapping of the loans
         loan_info: Mapping<Id, LoanInfo>,
         //Identifier for the loan
         last_loan_id: Id,
+        //AccountId of the community-loan-pool
+        pallet_id: AccountId,
     }
 
     
@@ -89,15 +89,10 @@ pub mod loan {
             if loan_info.borrowed_amount != 0 {
                 return Err(LoanError::OngoingLoan)
             }
-            let collection = loan_info.collection_id;       
-            let item = loan_info.item_id;
-            let contract = Self::env().account_id();
             self.loan_info.remove(&loan_id);
             Self::env()
-                .call_runtime(&RuntimeCall::Uniques(UniquesCall::Burn {
-                    collection,
-                    item,
-                    admin: Some(contract.into()),
+                .call_runtime(&RuntimeCall::CommunityLoanPool(CommunityLoanPoolCall::DeleteLoan {
+                    loan_id,
                 }))
                 .map_err(Into::into)
         }
@@ -129,6 +124,7 @@ pub mod loan {
             if repay_amount > Self::env().transferred_value() {
                 return Err(LoanError::NotEnoughFundsProvided)
             } 
+            <Self as DefaultEnv>::env().transfer(self.pallet_id, Self::env().transferred_value());
             loan_info.borrowed_amount -= repay_amount;
             self.loan_info.insert(&loan_id, &loan_info); 
             Ok(())
@@ -136,23 +132,24 @@ pub mod loan {
     
 
         #[ink(message)]
-        fn withdraw_funds(&mut self,loan_id: Id, amount: Balance) -> Result<(), LoanError> {
+        fn withdraw_funds(&mut self,loan_id: Id, amount: u128) -> Result<(), LoanError> {
 
             let loan_info_option = self.loan_info.get(&loan_id);
             if loan_info_option.is_none() {
                 return Err(LoanError::NonExistingLoanId)
             }
             let mut loan_info = loan_info_option.unwrap();
-            if amount >= Self::env().balance() {
+            if amount > Self::env().balance() {
                 return Err(LoanError::InsufficientLoanBalance)
             }
-            if amount >= loan_info.available_amount {
+            if amount > loan_info.available_amount {
                 return Err(LoanError::InsufficientLoanBalance)
             }
             if loan_info.borrower != <Self as DefaultEnv>::env().caller() {
                 return Err(LoanError::NotTheBorrower)
             }
-            <Self as DefaultEnv>::env().transfer(loan_info.borrower, amount);
+            // for testing purpose on polkadot.js we add the zeros due to the decimals
+            <Self as DefaultEnv>::env().transfer(loan_info.borrower, amount * 1000000000000);
             loan_info.borrowed_amount += amount;
             loan_info.available_amount -= amount;
             self.loan_info.insert(&loan_id, &loan_info);
@@ -171,18 +168,19 @@ pub mod loan {
     impl LoanContract {
         /// Constructor that initializes loan information for the contract
         #[ink(constructor, payable)]
-        pub fn new() -> Self {
+        pub fn new(pallet_id: AccountId) -> Self {
             let loan_info = Mapping::default();
             let last_loan_id = 0;
 
             LoanContract{
                 loan_info,
                 last_loan_id,
+                pallet_id,
             }
         }
 
         /// Internal function to return the id of a new loan and to increase it in the storage
-        fn _get_next_loan_id_and_increase(&mut self) -> u128 {
+        fn _get_next_loan_id_and_increase(&mut self) -> u32 {
             let mut loan_id = self.last_loan_id;
             loan_id += 1;
             self.last_loan_id = loan_id;
@@ -201,7 +199,7 @@ pub mod loan {
             let accounts = default_accounts();
             set_sender(accounts.alice);
             set_balance(contract_id(), 1000);
-            LoanContract::new()
+            LoanContract::new(accounts.frank)
         }
 
         fn contract_id() -> AccountId {
@@ -268,6 +266,10 @@ pub mod loan {
             let loan_info = loan.get_loan_info(1);
             assert_eq!(500, loan_info.borrowed_amount);
             assert_eq!(500, loan_info.available_amount);
+            let result = loan.withdraw_funds(1, 500);
+            let loan_info = loan.get_loan_info(1);
+            assert_eq!(1000, loan_info.borrowed_amount);
+            assert_eq!(0, loan_info.available_amount);
         }
 
         #[ink::test]
@@ -317,8 +319,10 @@ pub mod loan {
             pay_with_call!(loan.create_loan(accounts.bob, 0, 0, 2000, 1000), 1000);
             let contract_balance_before = ink::env::balance::<ink::env::DefaultEnvironment>();
             let bob_balance_before = get_account_balance::<ink::env::DefaultEnvironment>(accounts.bob);
+            let pallet_balance_before = get_account_balance::<ink::env::DefaultEnvironment>(accounts.frank);
             assert_eq!(Ok(1000), bob_balance_before);
             assert_eq!(2000, contract_balance_before);
+            assert_eq!(Ok(0), pallet_balance_before);
             set_sender(accounts.bob);
             let result = loan.withdraw_funds(1, 500);
             assert_eq!(Ok(()), result);
@@ -326,8 +330,10 @@ pub mod loan {
             assert_eq!(Ok(()), repay_result);
             let contract_balance_after = ink::env::balance::<ink::env::DefaultEnvironment>();
             let bob_balance_after = get_account_balance::<ink::env::DefaultEnvironment>(accounts.bob);
+            let pallet_balance_after = get_account_balance::<ink::env::DefaultEnvironment>(accounts.frank);
             assert_eq!(Ok(1250), bob_balance_after);
-            assert_eq!(1750, contract_balance_after);
+            assert_eq!(1500, contract_balance_after);
+            assert_eq!(Ok(250), pallet_balance_after);
             let loan_info = loan.get_loan_info(1);
             assert_eq!(250, loan_info.borrowed_amount);
             assert_eq!(500, loan_info.available_amount);
