@@ -82,11 +82,16 @@ pub mod loan {
         #[ink(message)]
         fn delete_loan(&mut self, loan_id: Id) -> Result<(), LoanError> {
             let loan_info = self.loan_info.get(&loan_id).unwrap();
+            let remaining_available_amount = loan_info.available_amount;
             if loan_info.lender != Self::env().caller() {
                 return Err(LoanError::NoPermission)
             }
             if loan_info.borrowed_amount != 0 {
                 return Err(LoanError::OngoingLoan)
+            }
+            if remaining_available_amount > 0 {
+                // for testing purpose on polkadot.js we add the zeros due to the decimals
+                <Self as DefaultEnv>::env().transfer(self.pallet_id, remaining_available_amount * 1000000000000);
             }
             self.loan_info.remove(&loan_id);
             Self::env()
