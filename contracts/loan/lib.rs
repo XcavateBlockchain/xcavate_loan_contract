@@ -53,12 +53,11 @@ pub mod loan {
 
     impl Loan for LoanContract {
         #[ink(message, payable)]
-        fn create_loan(&mut self, borrower: AccountId, collection_id: u32, item_id: u32, collateral_price: Balance, available_amount: Balance) -> Result<(), LoanError> {
+        fn create_loan(&mut self, lender: AccountId, borrower: AccountId, collection_id: u32, item_id: u32, collateral_price: Balance, available_amount: Balance) -> Result<(), LoanError> {
 
             if available_amount > Self::env().transferred_value() {
                 return Err(LoanError::NotEnoughFundsProvided)
             }
-            let lender = <Self as DefaultEnv>::env().caller();
             let timestamp = <Self as DefaultEnv>::env().block_timestamp();
             let borrowed_amount = 0;
             let loan_info = LoanInfo {
@@ -222,7 +221,7 @@ pub mod loan {
         fn create_loan_works() {
             let accounts = default_accounts();
             let mut loan = create_contract();
-            let result = pay_with_call!(loan.create_loan(accounts.bob, 0, 0, 2000, 1000), 1000);
+            let result = pay_with_call!(loan.create_loan(accounts.alice, accounts.bob, 0, 0, 2000, 1000), 1000);
             assert_eq!(result, Ok(()));
         }
 
@@ -230,7 +229,7 @@ pub mod loan {
         fn create_loan_fails_if_not_enough_funds_transferred() {
             let accounts = default_accounts();
             let mut loan = create_contract();
-            let result = pay_with_call!(loan.create_loan(accounts.bob, 0, 0, 2000, 1000), 900);
+            let result = pay_with_call!(loan.create_loan(accounts.alice, accounts.bob, 0, 0, 2000, 1000), 900);
             assert_eq!(result, Err(LoanError::NotEnoughFundsProvided));
         }
 
@@ -238,10 +237,10 @@ pub mod loan {
         fn increase_loan_id_works() {
             let accounts = default_accounts();
             let mut loan = create_contract();
-            let result = pay_with_call!(loan.create_loan(accounts.bob, 0, 0, 2000, 1000), 1000);
+            let result = pay_with_call!(loan.create_loan(accounts.alice, accounts.bob, 0, 0, 2000, 1000), 1000);
             assert_eq!(result, Ok(()));
             loan.get_loan_info(1);
-            let result = pay_with_call!(loan.create_loan(accounts.bob, 0, 0, 2000, 1000), 1000);
+            let result = pay_with_call!(loan.create_loan(accounts.alice, accounts.bob, 0, 0, 2000, 1000), 1000);
             assert_eq!(result, Ok(()));
             loan.get_loan_info(2);
         }
@@ -250,7 +249,7 @@ pub mod loan {
         fn withdraw_works() {
             let accounts = default_accounts();
             let mut loan = create_contract();
-            let result = pay_with_call!(loan.create_loan(accounts.bob, 0, 0, 2000, 1000), 1000);
+            let result = pay_with_call!(loan.create_loan(accounts.alice, accounts.bob, 0, 0, 2000, 1000), 1000);
             assert_eq!(result, Ok(()));
             let contract_balance_before = ink::env::balance::<ink::env::DefaultEnvironment>();
             let bob_balance_before = get_account_balance::<ink::env::DefaultEnvironment>(accounts.bob);
@@ -276,7 +275,7 @@ pub mod loan {
         fn withdraw_fails_non_existing_loanid() {
             let accounts = default_accounts();
             let mut loan = create_contract();
-            let result = pay_with_call!(loan.create_loan(accounts.bob, 0, 0, 2000, 1000), 1000);
+            let result = pay_with_call!(loan.create_loan(accounts.alice, accounts.bob, 0, 0, 2000, 1000), 1000);
             assert_eq!(result, Ok(()));
             let contract_balance_before = ink::env::balance::<ink::env::DefaultEnvironment>();
             let bob_balance_before = get_account_balance::<ink::env::DefaultEnvironment>(accounts.bob);
@@ -291,7 +290,7 @@ pub mod loan {
         fn withdraw_fails_if_someone_but_the_borrower_calls() {
             let accounts = default_accounts();
             let mut loan = create_contract();
-            pay_with_call!(loan.create_loan(accounts.alice, 0, 0, 2000, 1000), 1000);
+            pay_with_call!(loan.create_loan(accounts.bob, accounts.alice, 0, 0, 2000, 1000), 1000);
             set_sender(accounts.bob);
             let result = loan.withdraw_funds(1,500);
             assert_eq!(Err(LoanError::NotTheBorrower), result);
@@ -306,7 +305,7 @@ pub mod loan {
         fn withdraw_fails_insufficient_funds() {
             let accounts = default_accounts();
             let mut loan = create_contract();
-            pay_with_call!(loan.create_loan(accounts.alice, 0, 0, 2000, 1000), 1000);
+            pay_with_call!(loan.create_loan(accounts.bob, accounts.alice, 0, 0, 2000, 1000), 1000);
             set_sender(accounts.bob);
             let result = loan.withdraw_funds(1, 1500);
             assert_eq!(Err(LoanError::InsufficientLoanBalance), result);
@@ -316,7 +315,7 @@ pub mod loan {
         fn repay_works() {
             let accounts = default_accounts();
             let mut loan = create_contract();
-            pay_with_call!(loan.create_loan(accounts.bob, 0, 0, 2000, 1000), 1000);
+            pay_with_call!(loan.create_loan(accounts.alice, accounts.bob, 0, 0, 2000, 1000), 1000);
             let contract_balance_before = ink::env::balance::<ink::env::DefaultEnvironment>();
             let bob_balance_before = get_account_balance::<ink::env::DefaultEnvironment>(accounts.bob);
             let pallet_balance_before = get_account_balance::<ink::env::DefaultEnvironment>(accounts.frank);
@@ -343,7 +342,7 @@ pub mod loan {
         fn repay_fails_if_amount_is_zero() {
             let accounts = default_accounts();
             let mut loan = create_contract();
-            let result = pay_with_call!(loan.create_loan(accounts.bob, 0, 0, 2000, 1000), 1000);
+            let result = pay_with_call!(loan.create_loan(accounts.alice, accounts.bob, 0, 0, 2000, 1000), 1000);
             let contract_balance_before = ink::env::balance::<ink::env::DefaultEnvironment>();
             let bob_balance_before = get_account_balance::<ink::env::DefaultEnvironment>(accounts.bob);
             assert_eq!(Ok(1000), bob_balance_before);
@@ -359,7 +358,7 @@ pub mod loan {
         fn repay_fails_not_enough_funds_provided() {
             let accounts = default_accounts();
             let mut loan = create_contract();
-            let result = pay_with_call!(loan.create_loan(accounts.bob, 0, 0, 2000, 1000), 1000);
+            let result = pay_with_call!(loan.create_loan(accounts.alice, accounts.bob, 0, 0, 2000, 1000), 1000);
             let contract_balance_before = ink::env::balance::<ink::env::DefaultEnvironment>();
             let bob_balance_before = get_account_balance::<ink::env::DefaultEnvironment>(accounts.bob);
             assert_eq!(Ok(1000), bob_balance_before);

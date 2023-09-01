@@ -55,7 +55,7 @@ pub trait Loan {
 
     // This function will create a new loan
     #[ink(message, payable)]
-    fn create_loan(&mut self, borrower: AccountId, collection_id: u32, item_id: u32, collateral_price: Balance, available_amount: Balance) -> Result<(), LoanError>;
+    fn create_loan(&mut self, lender: AccountId, borrower: AccountId, collection_id: u32, item_id: u32, collateral_price: Balance, available_amount: Balance) -> Result<(), LoanError>;
 
     // This function will delete the loan and burns the nft
     #[ink(message)]
