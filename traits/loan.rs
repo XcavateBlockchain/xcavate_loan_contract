@@ -1,10 +1,4 @@
-use openbrush::{
-    traits::{
-        AccountId,
-        Balance,
-        Timestamp,
-    },
-};
+use openbrush::traits::{AccountId, Balance, Timestamp};
 
 type Id = u32;
 
@@ -34,14 +28,14 @@ pub struct LoanInfo {
 
 impl Default for LoanInfo {
     fn default() -> Self {
-        Self {            
-            lender: [0u8; 32].into(),           
-            borrower: [0u8; 32].into(),           
-            collection_id: Default::default(),          
-            item_id: Default::default(),          
-            collateral_price: Balance::default(),        
-            available_amount: Balance::default(),           
-            borrowed_amount: Balance::default(),          
+        Self {
+            lender: [0u8; 32].into(),
+            borrower: [0u8; 32].into(),
+            collection_id: Default::default(),
+            item_id: Default::default(),
+            collateral_price: Balance::default(),
+            available_amount: Balance::default(),
+            borrowed_amount: Balance::default(),
             timestamp: Timestamp::default(),
         }
     }
@@ -52,12 +46,20 @@ pub type LoanRef = dyn Loan;
 
 #[openbrush::trait_definition]
 pub trait Loan {
-
     // This function will create a new loan
     #[ink(message, payable)]
-    fn create_loan(&mut self, lender: AccountId, borrower: AccountId, collection_id: u32, item_id: u32, collateral_price: Balance, available_amount: Balance) -> Result<(), LoanError>;
+    fn create_loan(
+        &mut self,
+        lender: AccountId,
+        borrower: AccountId,
+        collection_id: u32,
+        item_id: u32,
+        collateral_price: Balance,
+        available_amount: Balance,
+    ) -> Result<(), LoanError>;
 
     // This function will delete the loan and burns the nft
+    // It call the community-loan-pallet and send the remaining available amount back to the pallet
     #[ink(message)]
     fn delete_loan(&mut self, loan_id: Id) -> Result<(), LoanError>;
 
@@ -66,12 +68,13 @@ pub trait Loan {
     fn update_loan(&mut self, loan_id: Id, new_borrow_amount: Balance) -> Result<(), LoanError>;
 
     // This function is for the lender to repay the loan
+    // The repaying amount is directly send to the pallet
     #[ink(message, payable)]
     fn repay(&mut self, loan_id: Id, repay_amount: Balance) -> Result<(), LoanError>;
-    
+
     // This function lets the lender withdraw funds from the loan
     #[ink(message)]
-    fn withdraw_funds(&mut self,loan_id: Id, amount: Balance) -> Result<(), LoanError>;
+    fn withdraw_funds(&mut self, loan_id: Id, amount: Balance) -> Result<(), LoanError>;
 
     #[ink(message)]
     fn get_loan_info(&self, loan_id: Id) -> LoanInfo;
@@ -102,7 +105,6 @@ pub enum LoanError {
     NotEnoughFundsProvided,
     /// Error if the runtime call failed
     CallRuntimeFailed,
-    
 }
 
 use ink::env::Error as EnvError;
@@ -115,5 +117,3 @@ impl From<EnvError> for LoanError {
         }
     }
 }
-
-
