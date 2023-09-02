@@ -1,12 +1,15 @@
 # Xcavate Loan Contract
 
-# Use below command to go the loan directory
+## Use below command to go the loan directory
 
-- cd contracts/loan
+```shell
+cd contracts/loan
+```
 
-# Use below command to build the loan.contract file
+## Use below command to build the loan.contract file
 
-- cargo contract build --release
+```shell
+cargo contract build --release
+```
 
-
-# Deploy the contract to the Xcavate node to interact with it
+## Deploy the contract to the Xcavate node to interact with it
