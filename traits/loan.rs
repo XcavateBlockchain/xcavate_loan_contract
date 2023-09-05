@@ -67,6 +67,13 @@ pub trait Loan {
     #[ink(message, payable)]
     fn update_loan(&mut self, loan_id: Id, new_borrow_amount: Balance) -> Result<(), LoanError>;
 
+    #[ink(message, payable)]
+    fn charge_apy(
+        &mut self,
+        loan_id: Id,
+        amount: Balance,
+    ) -> Result<(), LoanError>;
+
     // This function is for the lender to repay the loan
     // The repaying amount is directly send to the pallet
     #[ink(message, payable)]
