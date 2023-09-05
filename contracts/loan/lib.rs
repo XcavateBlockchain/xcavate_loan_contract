@@ -116,6 +116,19 @@ pub mod loan {
         }
 
         #[ink(message, payable)]
+        fn charge_apy(
+            &mut self,
+            loan_id: Id,
+            amount: Balance,
+        ) -> Result<(), LoanError> {
+            let mut loan_info = self.loan_info.get(&loan_id).unwrap();
+            loan_info.borrowed_amount += amount;
+            loan_info.timestamp = <Self as DefaultEnv>::env().block_timestamp();
+            self.loan_info.insert(&loan_id, &loan_info);
+            Ok(())
+        }
+
+        #[ink(message, payable)]
         fn repay(&mut self, loan_id: Id, repay_amount: Balance) -> Result<(), LoanError> {
             let mut loan_info = self.loan_info.get(&loan_id).unwrap();
             if repay_amount == 0 {
@@ -408,6 +421,22 @@ pub mod loan {
             assert_eq!(Ok(()), result);
             let repay_result = pay_with_call!(loan.repay(1, 500), 400);
             assert_eq!(Err(LoanError::NotEnoughFundsProvided), repay_result);
+        }
+
+        #[ink::test]
+        fn charge_apy_works() {
+            let accounts = default_accounts();
+            let mut loan = create_contract();
+            pay_with_call!(
+                loan.create_loan(accounts.alice, accounts.bob, 0, 0, 2000, 1000),
+                1000
+            );
+            let loan_info_before = loan.get_loan_info(1);
+            assert_eq!(0, loan_info_before.borrowed_amount);
+            let result = loan.charge_apy(1, 100);
+            assert_eq!(Ok(()), result);
+            let loan_info_after = loan.get_loan_info(1);
+            assert_eq!(100, loan_info_after.borrowed_amount);
         }
     }
 }
