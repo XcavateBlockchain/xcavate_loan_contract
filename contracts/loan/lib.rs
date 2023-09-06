@@ -13,6 +13,9 @@ enum RuntimeCall {
 enum CommunityLoanPoolCall {
     #[codec(index = 3)]
     DeleteLoan { loan_id: u32 },
+
+    #[codec(index = 4)]
+    UpdateLoan { loan_id: u32, amount: u128 },
 }
 
 #[openbrush::contract]
@@ -140,7 +143,11 @@ pub mod loan {
             <Self as DefaultEnv>::env().transfer(self.pallet_id, Self::env().transferred_value());
             loan_info.borrowed_amount -= repay_amount;
             self.loan_info.insert(&loan_id, &loan_info);
-            Ok(())
+            Self::env()
+            .call_runtime(&RuntimeCall::CommunityLoanPool(
+                CommunityLoanPoolCall::UpdateLoan { loan_id, amount: repay_amount },
+            ))
+            .map_err(Into::into)
         }
 
         #[ink(message)]
