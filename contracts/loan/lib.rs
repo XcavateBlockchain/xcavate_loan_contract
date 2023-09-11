@@ -5,7 +5,7 @@ use sp_runtime::MultiAddress;
 
 #[derive(scale::Encode)]
 enum RuntimeCall {
-    #[codec(index = 8)]
+    #[codec(index = 7)]
     CommunityLoanPool(CommunityLoanPoolCall),
 }
 
