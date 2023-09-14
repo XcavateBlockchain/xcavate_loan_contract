@@ -1,5 +1,8 @@
 #![cfg_attr(not(feature = "std"), no_std, no_main)]
 
+use ink::primitives::AccountId;
+use sp_runtime::MultiAddress;
+
 #[derive(scale::Encode)]
 enum RuntimeCall {
     #[codec(index = 7)]
@@ -66,16 +69,16 @@ pub mod loan {
             };
 
             let loan_id = self._get_next_loan_id_and_increase();
-            if self.loan_info.get(loan_id).is_some() {
+            if self.loan_info.get(&loan_id).is_some() {
                 return Err(LoanError::LoanIdTaken);
             }
-            self.loan_info.insert(loan_id, &loan_info);
+            self.loan_info.insert(&loan_id, &loan_info);
             Ok(())
         }
 
         #[ink(message)]
         fn delete_loan(&mut self, loan_id: Id) -> Result<(), LoanError> {
-            let loan_info = self.loan_info.get(loan_id).unwrap();
+            let loan_info = self.loan_info.get(&loan_id).unwrap();
             let remaining_available_amount = loan_info.available_amount;
             if loan_info.lender != Self::env().caller() {
                 return Err(LoanError::NoPermission);
@@ -88,7 +91,7 @@ pub mod loan {
                 <Self as DefaultEnv>::env()
                     .transfer(self.pallet_id, remaining_available_amount * 1000000000000);
             }
-            self.loan_info.remove(loan_id);
+            self.loan_info.remove(&loan_id);
             Self::env()
                 .call_runtime(&RuntimeCall::CommunityLoanPool(
                     CommunityLoanPoolCall::DeleteLoan { loan_id },
@@ -102,7 +105,7 @@ pub mod loan {
             loan_id: Id,
             additional_available_amount: Balance,
         ) -> Result<(), LoanError> {
-            let mut loan_info = self.loan_info.get(loan_id).unwrap();
+            let mut loan_info = self.loan_info.get(&loan_id).unwrap();
             if additional_available_amount > Self::env().transferred_value() {
                 return Err(LoanError::NotEnoughFundsProvided);
             }
@@ -111,22 +114,22 @@ pub mod loan {
             }
             loan_info.available_amount += additional_available_amount;
             loan_info.timestamp = <Self as DefaultEnv>::env().block_timestamp();
-            self.loan_info.insert(loan_id, &loan_info);
+            self.loan_info.insert(&loan_id, &loan_info);
             Ok(())
         }
 
         #[ink(message, payable)]
         fn charge_apy(&mut self, loan_id: Id, amount: Balance) -> Result<(), LoanError> {
-            let mut loan_info = self.loan_info.get(loan_id).unwrap();
+            let mut loan_info = self.loan_info.get(&loan_id).unwrap();
             loan_info.borrowed_amount += amount;
             loan_info.timestamp = <Self as DefaultEnv>::env().block_timestamp();
-            self.loan_info.insert(loan_id, &loan_info);
+            self.loan_info.insert(&loan_id, &loan_info);
             Ok(())
         }
 
         #[ink(message, payable)]
         fn repay(&mut self, loan_id: Id, repay_amount: Balance) -> Result<(), LoanError> {
-            let mut loan_info = self.loan_info.get(loan_id).unwrap();
+            let mut loan_info = self.loan_info.get(&loan_id).unwrap();
             if repay_amount == 0 {
                 return Err(LoanError::RepayAmountMustBeHigherThanZero);
             }
@@ -135,7 +138,7 @@ pub mod loan {
             }
             <Self as DefaultEnv>::env().transfer(self.pallet_id, Self::env().transferred_value());
             loan_info.borrowed_amount -= repay_amount;
-            self.loan_info.insert(loan_id, &loan_info);
+            self.loan_info.insert(&loan_id, &loan_info);
             Self::env()
                 .call_runtime(&RuntimeCall::CommunityLoanPool(
                     CommunityLoanPoolCall::UpdateLoan {
@@ -148,7 +151,7 @@ pub mod loan {
 
         #[ink(message)]
         fn withdraw_funds(&mut self, loan_id: Id, amount: u128) -> Result<(), LoanError> {
-            let loan_info_option = self.loan_info.get(loan_id);
+            let loan_info_option = self.loan_info.get(&loan_id);
             if loan_info_option.is_none() {
                 return Err(LoanError::NonExistingLoanId);
             }
@@ -166,15 +169,16 @@ pub mod loan {
             <Self as DefaultEnv>::env().transfer(loan_info.borrower, amount * 1000000000000);
             loan_info.borrowed_amount += amount;
             loan_info.available_amount -= amount;
-            self.loan_info.insert(loan_id, &loan_info);
+            self.loan_info.insert(&loan_id, &loan_info);
             Ok(())
         }
 
         #[ink(message)]
         fn get_loan_info(&self, loan_id: Id) -> LoanInfo {
-            self.loan_info.get(loan_id).unwrap_or_else(|| {
+            let loan_info = self.loan_info.get(&loan_id).unwrap_or_else(|| {
                 panic!("loan_id doesn't exist");
-            })
+            });
+            loan_info
         }
     }
 
