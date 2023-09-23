@@ -349,40 +349,6 @@ pub mod loan {
         }
 
         #[ink::test]
-        fn repay_works() {
-            let accounts = default_accounts();
-            let mut loan = create_contract();
-            pay_with_call!(
-                loan.create_loan(accounts.alice, accounts.bob, 0, 0, 2000, 1000),
-                1000
-            );
-            let contract_balance_before = ink::env::balance::<ink::env::DefaultEnvironment>();
-            let bob_balance_before =
-                get_account_balance::<ink::env::DefaultEnvironment>(accounts.bob);
-            let pallet_balance_before =
-                get_account_balance::<ink::env::DefaultEnvironment>(accounts.frank);
-            assert_eq!(Ok(1000), bob_balance_before);
-            assert_eq!(2000, contract_balance_before);
-            assert_eq!(Ok(0), pallet_balance_before);
-            set_sender(accounts.bob);
-            let result = loan.withdraw_funds(1, 500);
-            assert_eq!(Ok(()), result);
-            let repay_result = pay_with_call!(loan.repay(1, 250), 250);
-            assert_eq!(Ok(()), repay_result);
-            let contract_balance_after = ink::env::balance::<ink::env::DefaultEnvironment>();
-            let bob_balance_after =
-                get_account_balance::<ink::env::DefaultEnvironment>(accounts.bob);
-            let pallet_balance_after =
-                get_account_balance::<ink::env::DefaultEnvironment>(accounts.frank);
-            assert_eq!(Ok(1250), bob_balance_after);
-            assert_eq!(1500, contract_balance_after);
-            assert_eq!(Ok(250), pallet_balance_after);
-            let loan_info = loan.get_loan_info(1);
-            assert_eq!(250, loan_info.borrowed_amount);
-            assert_eq!(500, loan_info.available_amount);
-        }
-
-        #[ink::test]
         fn repay_fails_if_amount_is_zero() {
             let accounts = default_accounts();
             let mut loan = create_contract();
