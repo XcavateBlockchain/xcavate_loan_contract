@@ -25,7 +25,8 @@ cargo contract build --release
 
 Run the following command in the loan directory for the rust unit tests in the loan contract.
 
-Comment out the "* 1000000000000" in line 89 and 166 in the lib.rs file of the smart contract for running the tests. These were implmented for demo purpose on polkadot js app. 
+# Important
+Comment out the " * 1000000000000 " in line 89 and 166 in the lib.rs file of the smart contract for running the tests. These were implmented for demo purpose on polkadot js app. 
 
 ```sh
 cargo +nightly test
